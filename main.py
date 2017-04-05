@@ -1,13 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-import requests
+
 from requests import session
-import pprint
 from mongo import MDB
 from bs4 import BeautifulSoup
 from time import sleep
 import queue
 import config
+import logging
+import signal
+from datetime import datetime, timedelta
+import json
+from bson import json_util
 
 
 class TucForumCrawl:
@@ -22,45 +26,45 @@ class TucForumCrawl:
         'referer': "https://www.tuc.gr/index.php?id=829",
         'accept-encoding': "gzip, deflate, br",
         'accept-language': "en-US,en;q=0.8",
-        'cookie': "tuclightscookie=1; _ga=GA1.2.439343948.1473727072; _pk_ref.10.d786=%5B%22%22%2C%22%22%2C1482836181%2C%22https%3A%2F%2Fwww.google.gr%2F%22%5D; _pk_id.10.d786=1aaf9153bf67e5ba.1473892719.2.1482836234.1482836181.; __unam=102b87c-15ae9640260-6819ac9c-12; _pk_ref.1.d786=%5B%22%22%2C%22%22%2C1491234143%2C%22https%3A%2F%2Fwww.facebook.com%2F%22%5D; _pk_id.1.d786=d99478d52a29e818.1472830265.126.1491234143.1491234143.",
-        'cache-control': "no-cache",
-        'postman-token': "28b3a37e-839b-9d64-0caf-6cee9c332b10"}
+        'cache-control': "no-cache"}
 
     # payload for post log in request
     __payload = {'logintype': 'login',
-                 'pass': config.password,   # this is for password
+                 'pass': config.password,  # this is for password
                  'permalogin': '1',
                  'pid': '2',
                  'submit': 'Σύνδεση',
                  'tx_felogin_pi1[noredirect]': '0',
-                 'user': config.username}       #this is for username
+                 'user': config.username}  # this is for username
 
-    __root_forum_url = None
-    __cur_url = None  # points to current url fetched
-    __page_counter = 1
-    __post_counter = 0
     __session = None  # holds session cookies
     __root_soup = None  # soup object of root url passed in the constructor
-    __throttle = 2  # throttle limit
-    __waitTime = 5  # wait time when throttling
-    __max_pages = -1
-    __max_posts = -1
-
-    __db = MDB(port=27017, host='127.0.0.1', dbname='tuc', dbcollection='test')
+    __page_counter = 1
+    __post_counter = 0
+    __throttle = 2  # apply throttle limit every 2 pages
+    __waitTime = 2  # wait time when throttling
+    __max_pages = 3
+    __max_posts = 50
+    __LOG_FILENAME = 'www.tuc.gr.out'
+    logging.basicConfig(filename=__LOG_FILENAME,
+                        level=logging.DEBUG)
 
     def __init__(self, root_forum_url, username, passw):
 
         self.__root_forum_url = root_forum_url
-        self.__cur_url = root_forum_url
+        self.__cur_url = root_forum_url  # points to current url fetched
         self.__username = username
         self.__passw = passw
         # update payload with user credentials
-        #self.__payload['username'] =username
-        #self.__payload['pass'] = passw
+        # self.__payload['username'] =username
+        # self.__payload['pass'] = passw
+        logging.debug('try to logging to tuc.gr')
         self.__login()
-        self.__root_soup = self.fetch_n_soup(self.__root_forum_url, check_login=True)
+        self.__root_soup = self.fetch_n_soup(self.__root_forum_url,
+                                             check_login=True)
         self.__q = queue.Queue()
-
+        self.__db = MDB(port=config.db_port, host=config.db_host,
+                                dbname=config.db_name, dbcollection=config.db_collection)
 
     def set_max_pages(self, max_pages):
         self.__max_pages = max_pages
@@ -88,8 +92,10 @@ class TucForumCrawl:
             return False
         else:
             if self.__page_counter >= self.__max_pages or self.__post_counter >= self.__max_posts:
+                logging.debug(
+                    'Download limit reached posts:{} pages:{}'.format(self.__post_counter, self.__page_counter))
                 print("Download limit reached posts: {} pages:{}".format(self.__post_counter, self.__page_counter))
-                self.__store_to_db()
+                self.store_to_db()
                 return True
             else:
                 False
@@ -101,11 +107,11 @@ class TucForumCrawl:
         """
         if self.__page_counter % self.__throttle == 0:
             if self.__post_counter % (self.__throttle * 10) == 0:
-                print("\t...zzz...\t...zzz...")
+                logging.debug('Throttling limit reached : 5 sec sleep ..zZzZ')
+                print("\t...zZzZ...\t...zZzZ...")
                 return self.__zzz()
             else:
                 return False
-
 
     def __set_cur_url(self, new_url):
         self.__cur_url = new_url
@@ -149,12 +155,14 @@ class TucForumCrawl:
             return None
 
     def parse_root_section_page(self):
+        logging.debug("parse root section url: %s".format(self.__cur_url))
+
         soup = self.fetch_n_soup(self.__cur_url, check_login=True)
 
+        logging.debug('*Forum Page: {}'.format(self.__page_counter))
         print('*Forum Page: {}'.format(self.__page_counter))
 
         if soup:
-
             # get all topics from table page
             # extract title and href
             topics = soup.find_all('span', class_='tx-mmforum-pi1-listtopic-topicname')
@@ -167,39 +175,37 @@ class TucForumCrawl:
 
                 # fetch post
                 self.__post_counter += 1
-                # print('\tfetching -> postid: {} title: {}'.format(self.__post_counter, title))
-                print("*", end='')
+                logging.debug('\tfetching -> postid: {} title: {}'.format(self.__post_counter, title))
+
                 self.__ShouldIthrottle()
 
                 if self.has_reached_limits():
                     return
-                response = self.__session.get(url)
-                # print('ok')
 
-                # check status code
-                if response.status_code != 200:
-                    print("error:::::")
-
-                # feed post to bs
-                # print('parsing post page')
-                post_page = BeautifulSoup(response.text, 'html.parser')
+                post_soup = self.fetch_n_soup(url)
 
                 texts = []
-                posts_text = post_page.find_all('td', class_='tx-mmforum-td tx-mmforum-pi1-listpost-text')
+                posts_text = post_soup.find_all('td', class_='tx-mmforum-td tx-mmforum-pi1-listpost-text')
                 for p in posts_text:
-                    # print(p.text)
-
                     texts.append(p.text)
 
                 post = {'title': title,
                         'url': url,
                         'body': "".join(texts),
-                        'lang': post_page.html.get('lang')}
+                        'lang': post_soup.html.get('lang'),
+                        'date': datetime.now().isoformat(),
+                        'raw_responce': "*",
+                        'processed': False}
+
+                # print(json.dumps(post, indent=4, sort_keys=True))
+
+
+
 
                 self.__q.put(post)
 
             print("db store...")
-            self.__store_to_db()
+            self.store_to_db()
             if self.has_next_page(self.__root_soup):
                 nextpage_url = self.get_next_page(self.__root_soup)
 
@@ -209,20 +215,27 @@ class TucForumCrawl:
                 # call parse
                 self.__page_counter += 1
                 self.parse_root_section_page()
-            else:
-                print('Finished !!!! ')
 
-    def __store_to_db(self):
+    def store_to_db(self):
         while not self.__q.empty():
             post = self.__q.get()
             self.__db.insert(post)
 
+    def __store_to_file(self):
+        while not self.__q.empty():
+            post = self.__q.get()
+            with open(post['url'], 'rw') as fp:
+                fp.write(post)
+
     def has_next_page(self, soup):
         n = soup.find_all('li', class_='tx-pagebrowse-next')
-        if n[0].a.text == "Επόμενη>":
-            return True
-        else:
+        if len(n) is 0:
             return False
+        if hasattr(n[0], n[0].a.text):
+            if n[0].a.text == "Επόμενη>":
+                return True
+            else:
+                return False
 
     def get_next_page(self, soup):
         if self.has_next_page(soup):
@@ -234,13 +247,27 @@ class TucForumCrawl:
 
 if __name__ == "__main__":
 
- db = MDB(port=config.db_port, host=config.db_host, dbname=config.db_name, dbcollection=config.db_collection)
- # db.search_by_attr('lang', 'el')
- print(db.num_of_docs()   )
- # db.destroy()
+    print('TUC Forum crawler version 1.1\n')
+
+    # db = MDB(port=config.db_port, host=config.db_host, dbname=config.db_name, dbcollection=config.db_collection)
+    # db.search_by_attr('lang', 'el')
+    # print(db.num_of_docs()   )
+    # db.destroy()
 
 
- root_forum_url = 'https://www.tuc.gr/index.php?id=news&tx_mmforum_pi1%5Baction%5D=list_topic&tx_mmforum_pi1%5Bfid%5D=5'
+    print("Crawl links summary:")
+    keys = config.links.keys()
+    for k in keys:
+        print('[{}'.format(config.links[k]), end=']\n\n')
 
- tuc = TucForumCrawl(root_forum_url, config.username, config.password)
- tuc.parse_root_section_page()
+    for k in keys:
+        root_forum_url = config.links[k]
+
+        print('Start crawling: {}'.format(root_forum_url))
+        tuc = TucForumCrawl(root_forum_url, config.username, config.password)
+        try:
+            tuc.parse_root_section_page()
+            print('Finished crawling link: {}'.format(root_forum_url), end='\n\n')
+        except KeyboardInterrupt:
+            print("Keyboard interrupt received, stopping...")
+            tuc.store_to_db()
