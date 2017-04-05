@@ -246,7 +246,7 @@ if __name__ == "__main__":
     print("Crawl links summary:")
 
     for link in config.links:
-        print('[{}'.format(config.links[k]), end=']\n\n')
+        print('[{}'.format(config.links), end=']\n\n')
 
     for root_forum_url in config.links:
         print('Start crawling: {}'.format(root_forum_url))
