@@ -9,9 +9,7 @@ import queue
 import config
 import logging
 import signal
-from datetime import datetime, timedelta
-import json
-from bson import json_util
+from datetime import datetime
 
 
 class TucForumCrawl:
