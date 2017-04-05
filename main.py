@@ -39,7 +39,7 @@ class TucForumCrawl:
     __root_soup = None  # soup object of root url passed in the constructor
     __page_counter = 1
     __post_counter = 0
-    __throttle = 2  # apply throttle limit every 2 pages
+    __throttle = 1000  # apply throttle limit every 2 pages
     __waitTime = 2  # wait time when throttling
     __max_pages = 3
     __max_posts = 50
@@ -244,13 +244,11 @@ if __name__ == "__main__":
 
     print('TUC Forum crawler version 1.1\n')
     print("Crawl links summary:")
-    keys = config.links.keys()
-    for k in keys:
+
+    for link in config.links:
         print('[{}'.format(config.links[k]), end=']\n\n')
 
-    for k in keys:
-        root_forum_url = config.links[k]
-
+    for root_forum_url in config.links:
         print('Start crawling: {}'.format(root_forum_url))
         tuc = TucForumCrawl(root_forum_url, config.username, config.password)
         try:
