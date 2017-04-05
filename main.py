@@ -53,9 +53,6 @@ class TucForumCrawl:
         self.__cur_url = root_forum_url  # points to current url fetched
         self.__username = username
         self.__passw = passw
-        # update payload with user credentials
-        # self.__payload['username'] =username
-        # self.__payload['pass'] = passw
         logging.debug('try to logging to tuc.gr')
         self.__login()
         self.__root_soup = self.fetch_n_soup(self.__root_forum_url,
