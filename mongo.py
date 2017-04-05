@@ -18,7 +18,8 @@ class MDB(object):
         try:
             conn = MongoClient(self.__host, self.__port)
             if conn is None:
-                raise ConnectionFailure('Mongo DB failed to connect  %s:s', self.__host, self.__port)
+                raise ConnectionFailure('Mongo DB failed to connect  %s:s',
+                                        self.__host, self.__port)
         except ConnectionFailure:
             print('ups')
 
@@ -28,17 +29,20 @@ class MDB(object):
         return self.__client[self.__dbname][self.__dbcollection].count()
 
     def search_by_id(self, id_):
-        res = self.__client[self.__dbname][self.__dbcollection].find_one({'id': ObjectId(id_)})
+        res = self.__client[self.__dbname][self.__dbcollection].find_one(
+            {'id': ObjectId(id_)})
         if res:
             return res
 
     def search_by_attr(self, attr, val):
-        cursor = self.__client[self.__dbname][self.__dbcollection].find({attr: val})
+        cursor = self.__client[self.__dbname][self.__dbcollection].find(
+            {attr: val})
         for document in cursor:
             pprint(document)
 
     def insert(self, page={}):
-        return self.__client[self.__dbname][self.__dbcollection].insert_one(page)
+        return self.__client[self.__dbname][self.__dbcollection].insert_one(
+            page)
 
     def destroy(self):
         self.__client.close()

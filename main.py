@@ -1,14 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-
+import queue
+import config
+import logging
 from requests import session
 from mongo import MDB
 from bs4 import BeautifulSoup
 from time import sleep
-import queue
-import config
-import logging
-import signal
 from datetime import datetime
 
 
@@ -39,10 +37,10 @@ class TucForumCrawl:
     __root_soup = None  # soup object of root url passed in the constructor
     __page_counter = 1
     __post_counter = 0
-    __throttle = 1000  # apply throttle limit every 2 pages
-    __waitTime = 2  # wait time when throttling
-    __max_pages = 3
-    __max_posts = 50
+    __throttle = 10  # apply throttle limit every 2 pages
+    __waitTime = 1  # wait time when throttling
+    __max_pages = -1
+    __max_posts = -1
     __LOG_FILENAME = 'www.tuc.gr.out'
     logging.basicConfig(filename=__LOG_FILENAME,
                         level=logging.DEBUG)
@@ -88,14 +86,16 @@ class TucForumCrawl:
         else:
             if self.__page_counter >= self.__max_pages or self.__post_counter >= self.__max_posts:
                 logging.debug(
-                    'Download limit reached posts:{} pages:{}'.format(self.__post_counter, self.__page_counter))
-                print("Download limit reached posts: {} pages:{}".format(self.__post_counter, self.__page_counter))
+                    'Download limit reached posts:{} pages:{}'.format(
+                        self.__post_counter, self.__page_counter))
+                print("Download limit reached posts: {} pages:{}".format(
+                    self.__post_counter, self.__page_counter))
                 self.store_to_db()
                 return True
             else:
                 False
 
-    def __ShouldIthrottle(self):
+    def __should_i_throttle(self):
         """in order to avoid banning from server
         pause fetching data every two pages or 
         when post count is 20 for 5 seconds then resume
@@ -160,7 +160,8 @@ class TucForumCrawl:
         if soup:
             # get all topics from table page
             # extract title and href
-            topics = soup.find_all('span', class_='tx-mmforum-pi1-listtopic-topicname')
+            topics = soup.find_all('span',
+                                   class_='tx-mmforum-pi1-listtopic-topicname')
             for t in topics:  # for every post in root page
                 # print("extracting titles and url from page")
 
@@ -170,9 +171,10 @@ class TucForumCrawl:
 
                 # fetch post
                 self.__post_counter += 1
-                logging.debug('\tfetching -> postid: {} title: {}'.format(self.__post_counter, title))
+                logging.debug('\tfetching -> postid: {} title: {}'.format(
+                    self.__post_counter, title))
 
-                self.__ShouldIthrottle()
+                self.__should_i_throttle()
 
                 if self.has_reached_limits():
                     return
@@ -180,7 +182,8 @@ class TucForumCrawl:
                 post_soup = self.fetch_n_soup(url)
 
                 texts = []
-                posts_text = post_soup.find_all('td', class_='tx-mmforum-td tx-mmforum-pi1-listpost-text')
+                posts_text = post_soup.find_all('td',
+                                                class_='tx-mmforum-td tx-mmforum-pi1-listpost-text')
                 for p in posts_text:
                     texts.append(p.text)
 
@@ -246,14 +249,15 @@ if __name__ == "__main__":
     print("Crawl links summary:")
 
     for link in config.links:
-        print('[{}'.format(config.links), end=']\n\n')
+        print('[{}'.format(link), end=']\n\n')
 
     for root_forum_url in config.links:
         print('Start crawling: {}'.format(root_forum_url))
         tuc = TucForumCrawl(root_forum_url, config.username, config.password)
         try:
             tuc.parse_root_section_page()
-            print('Finished crawling link: {}'.format(root_forum_url), end='\n\n')
+            print('Finished crawling link: {}'.format(root_forum_url),
+                  end='\n\n')
         except KeyboardInterrupt:
             print("Keyboard interrupt received, stopping...")
             tuc.store_to_db()
