@@ -61,8 +61,8 @@ class TucForumCrawl:
         self.__root_soup = self.fetch_n_soup(self.__root_forum_url,
                                              check_login=True)
         self.__q = queue.Queue()
-        self.__db = MDB(port=config.db_port, host=config.db_host,
-                                dbname=config.db_name, dbcollection=config.db_collection)
+        self.db = MDB(port=config.db_port, host=config.db_host,
+                      dbname=config.db_name, dbcollection=config.db_collection)
 
     def set_max_pages(self, max_pages):
         self.__max_pages = max_pages
@@ -217,7 +217,7 @@ class TucForumCrawl:
     def store_to_db(self):
         while not self.__q.empty():
             post = self.__q.get()
-            self.__db.insert(post)
+            self.db.insert(post)
 
     def __store_to_file(self):
         while not self.__q.empty():
@@ -246,13 +246,6 @@ class TucForumCrawl:
 if __name__ == "__main__":
 
     print('TUC Forum crawler version 1.1\n')
-
-    # db = MDB(port=config.db_port, host=config.db_host, dbname=config.db_name, dbcollection=config.db_collection)
-    # db.search_by_attr('lang', 'el')
-    # print(db.num_of_docs()   )
-    # db.destroy()
-
-
     print("Crawl links summary:")
     keys = config.links.keys()
     for k in keys:
@@ -269,3 +262,6 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("Keyboard interrupt received, stopping...")
             tuc.store_to_db()
+            sleep(2)
+            tuc.db.destroy()
+            print('Bye Bye')
