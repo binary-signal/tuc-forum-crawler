@@ -125,7 +125,7 @@ class TucForumCrawl:
         return self.__session
 
     def still_logged(self, resp):
-        if resp.find(self.__username):
+        if resp.find(self.__username) != -1:
             return True
         else:
             False
